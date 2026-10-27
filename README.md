@@ -4,14 +4,18 @@ Reusable backend for small consumer apps: accounts, cloud storage, sync, an AI
 gateway, a credit ledger, and payments. Installed **into each app's own
 Supabase project** — not run as a shared service.
 
-Status: **credit ledger built and tested.** Nothing deployed.
+Status: **ledger and AI gateway built, tested, and deployed** to the first
+app's project (Wearwell). A real metered call has moved credits end to end;
+eight adversarial probes against the live project were all blocked.
+See [docs/deploying.md](docs/deploying.md).
 
 ## Layout
 
 ```
 supabase/migrations/   versioned SQL, applied per app project
+supabase/functions/    Edge Functions; _shared/ is runtime-agnostic on purpose
 tests/                 runs against a local Postgres, never a deployed one
-docs/
+docs/                  ai-gateway.md, deploying.md
 ```
 
 ## Running the tests
