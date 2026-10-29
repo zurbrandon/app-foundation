@@ -118,6 +118,31 @@ next person who signs up:
 | `welcome_credits` | 100 | Per account. 33 garment tags at the current rate. |
 | `welcome_daily_cap` | 5000 | Welcome credits issued in any 24 hours. 0 disables the ceiling. |
 
+> ### ⚠️ Turn this down before any public App Store release
+>
+> **`welcome_credits` is temporarily 500 on the Wearwell project** (2026-10-29),
+> so one person can tag a whole existing wardrobe in one sitting. That is an
+> onboarding allowance for a known user, not a public default — it is 166 tags,
+> roughly 46c of provider spend per stranger who installs the app.
+>
+> Before submitting to the App Store, set it to a number that reaches a paywall:
+>
+> | Credits | Tags | Cost each |
+> | --- | --- | --- |
+> | **15** | **5** | **$0.014** ← "four or five goes, then the paywall" |
+> | 50 | 16 | $0.044 |
+>
+> Note those are not the same thing: 50 credits buys 16 tags, not 4–5. Pick by
+> the number of *tags* you want someone to get, then multiply by the operation's
+> `credits_flat` (currently 3).
+>
+> ```sql
+> update foundation.settings set value = '15'::jsonb where key = 'welcome_credits';
+> ```
+>
+> Also revisit `welcome_daily_cap` at that point. At 500 a head it allows ten new
+> users a day before closing; at 15 a head it allows over three hundred.
+
 The split exists because one number cannot do both jobs it gets asked to do.
 Enough to try the thing is not enough to finish onboarding a 150-piece
 wardrobe, and sizing it for the latter hands every passer-by half a dollar of
