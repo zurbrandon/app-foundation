@@ -90,7 +90,36 @@ export type FoundationOptions = {
   maxRetries?: number;
   /** Override for tests; real delays make test suites slow. */
   sleep?: (ms: number) => Promise<void>;
+  /** Override where the platform has a better source of randomness. */
+  randomId?: () => string;
 };
+
+/**
+ * A request id, without assuming a Web Crypto API.
+ *
+ * `crypto.randomUUID()` is absent in React Native — Expo's runtime installs a
+ * good deal of the web standard library but not that — so calling it throws on
+ * a phone while passing every test in Node. This needs to be unique, not
+ * unguessable: it is an idempotency key, never a secret, and the server pairs
+ * it with the caller's own user id.
+ */
+function defaultRandomId(): string {
+  const bytes = new Uint8Array(16);
+
+  const webCrypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (typeof webCrypto?.getRandomValues === 'function') {
+    webCrypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  // Version 4, variant 1 — the shape a uuid column expects.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 const SESSION_KEY = 'foundation.session.v1';
 /** Refresh this far ahead of expiry, to absorb clock skew and slow networks. */
@@ -101,6 +130,7 @@ export function createFoundation(options: FoundationOptions) {
   const base = options.url.replace(/\/+$/, '');
   const maxRetries = options.maxRetries ?? 2;
   const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const randomId = options.randomId ?? defaultRandomId;
 
   let session: Session | null = null;
   let loaded = false;
@@ -154,7 +184,7 @@ export function createFoundation(options: FoundationOptions) {
         headers: { apikey: options.anonKey, 'content-type': 'application/json' },
         body: JSON.stringify(body),
       });
-    } catch (cause) {
+    } catch {
       throw new FoundationError('network_error', `Could not reach ${path}`, 0);
     }
 
@@ -270,7 +300,7 @@ export function createFoundation(options: FoundationOptions) {
      * second one. Passing a fresh id per attempt would risk charging twice.
      */
     async run(operation: string, input: RunInput, opts?: { requestId?: string }): Promise<RunResult> {
-      const requestId = opts?.requestId ?? crypto.randomUUID();
+      const requestId = opts?.requestId ?? randomId();
       let refreshed = false;
       let lastError: FoundationError | null = null;
 

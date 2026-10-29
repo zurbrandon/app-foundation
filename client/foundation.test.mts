@@ -321,3 +321,47 @@ describe('signing out', () => {
     assert.equal(await f.userId(), 'user-2', 'the old anonymous user is unreachable');
   });
 });
+
+describe('portability', () => {
+  it('generates a request id without crypto.randomUUID', () => {
+    // React Native has no crypto.randomUUID — Expo's runtime installs much of
+    // the web standard library but not that. Calling it passed every test in
+    // Node and threw on the first real phone.
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+
+    try {
+      net.queue(() => session(), () => ok());
+      const f = client();
+      return f.run('app.op', { text: 'x' }).then(() => {
+        const id = net.of('ai-gateway')[0].body.requestId;
+        assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      });
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'crypto', original);
+    }
+  });
+
+  it('produces distinct ids even on the Math.random fallback', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+
+    try {
+      const ids = new Set<string>();
+
+      for (let i = 0; i < 300; i++) {
+        net = stub();
+        store = memoryStorage();
+        net.queue(() => session(), () => ok());
+        await client().run('app.op', { text: 'x' });
+        ids.add(net.of('ai-gateway')[0].body.requestId);
+      }
+
+      // A collision here would be two requests sharing a credit hold, so the
+      // second one would run for free against the first one's reservation.
+      assert.equal(ids.size, 300, 'every request id must be distinct');
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'crypto', original);
+    }
+  });
+});
