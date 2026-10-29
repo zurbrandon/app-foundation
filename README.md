@@ -14,9 +14,42 @@ See [docs/deploying.md](docs/deploying.md).
 ```
 supabase/migrations/   versioned SQL, applied per app project
 supabase/functions/    Edge Functions; _shared/ is runtime-agnostic on purpose
+client/                the TypeScript client, and its tests
 tests/                 runs against a local Postgres, never a deployed one
-docs/                  ai-gateway.md, deploying.md
+docs/                  http-api.md (the contract), ai-gateway.md, deploying.md
 ```
+
+## The contract is HTTP
+
+[docs/http-api.md](docs/http-api.md) is the interface. `client/` is a
+convenience over it, and **nothing may require a client to work**.
+
+That is not purity — the apps aren't one stack. Wearwell and familiar are Expo;
+Understory is SwiftUI on macOS and iOS. A TypeScript package would serve two of
+three and be dead weight for the third, so the contract is HTTP and the client
+stays thin enough to re-derive from the doc and port to Swift.
+
+`client/foundation.ts` is dependency-free and plain `fetch`: four endpoints
+don't justify ~100KB of supabase-js in a phone app, and the absence of a
+framework is what makes it readable as a reference implementation.
+
+```ts
+const foundation = createFoundation({ url, anonKey, storage });
+
+const tags = await foundation.runJson<Garment>('wearwell.tag_garment', {
+  image: { base64, mediaType: 'image/jpeg' },
+  jsonSchema: GARMENT_SCHEMA,
+});
+```
+
+It signs in anonymously on first use, refreshes before expiry, single-flights
+both so a cold start can't create two users, retries what is safe to retry, and
+**reuses its `requestId` across retries** — which is what makes a retry free
+rather than a second charge.
+
+Apps vendor it by copying for now. With three apps that is cheaper than
+publishing a package, and the drift it risks is bounded by the contract doc
+being the source of truth. Worth revisiting at the second app, not before.
 
 ## Running the tests
 
@@ -25,12 +58,24 @@ alongside another Supabase project on the default `543xx`.
 
 ```bash
 npm install
-supabase start -x storage-api -x imgproxy -x studio -x realtime -x vector -x supavisor
+npm run db:start
 npm test
 ```
 
-Storage and the rest are excluded because nothing here uses them, and on an
-older CLI the storage container fails its own migrations (`Migration
+`npm test` covers the ledger, the gateway and the client. The client's
+integration test against a deployed project is skipped unless you give it
+keys:
+
+```bash
+FOUNDATION_URL=https://<ref>.supabase.co \
+FOUNDATION_ANON_KEY=... FOUNDATION_SERVICE_KEY=... npm run test:live
+```
+
+That one creates a throwaway anonymous user, spends real credits on a real
+provider call, and deletes the user afterwards.
+
+`db:start` excludes storage and the rest because nothing here uses them, and
+on an older CLI the storage container fails its own migrations (`Migration
 revoke-grants-to-unused-operations not found`) and takes the whole stack down
 with it. Don't fix that by setting `enabled = false` under `[storage]` in
 `config.toml` — `supabase config push` would carry that to the deployed project
