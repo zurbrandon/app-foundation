@@ -8,7 +8,7 @@
     "db:start": "supabase start -x storage-api -x imgproxy -x studio -x realtime -x vector -x supavisor",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
-    "test": "node --experimental-strip-types --test \"tests/*.test.mjs\" \"tests/*.test.mts\" \"client/*.test.mts\"",
+    "test": "node --experimental-strip-types --test --test-concurrency=1 \"tests/*.test.mjs\" \"tests/*.test.mts\" \"client/*.test.mts\"",
     "test:live": "node --experimental-strip-types --test \"client/live.test.mts\""
   },
   "devDependencies": {

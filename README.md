@@ -106,6 +106,49 @@ Credits are integers. Free credits are spent before paid ones, and a release
 returns credits to the bucket they came from so free credits never silently
 become paid ones.
 
+## Free credits for new users
+
+A trigger on `auth.users` grants a new account its welcome credits, so there
+is nothing for a client to call, skip, or replay. Two settings, both tunable
+with an `UPDATE` against `foundation.settings` — no deploy, effective for the
+next person who signs up:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `welcome_credits` | 100 | Per account. 33 garment tags at the current rate. |
+| `welcome_daily_cap` | 5000 | Welcome credits issued in any 24 hours. 0 disables the ceiling. |
+
+The split exists because one number cannot do both jobs it gets asked to do.
+Enough to try the thing is not enough to finish onboarding a 150-piece
+wardrobe, and sizing it for the latter hands every passer-by half a dollar of
+provider spend. So the grant is a trial, and anyone who needs more is topped up
+deliberately.
+
+**The cap is the part that bounds the risk.** Anonymous sign-in is open by
+design, and Supabase still allows 30 per hour per IP by default. Without a
+ceiling the free programme is an unbounded liability; with one the worst case
+is a number chosen in advance. It reads the ledger rather than a counter, so it
+cannot drift from what was actually given away, and it counts only welcome
+grants — purchases and manual top-ups do not eat the allowance.
+
+Two deliberate choices worth keeping:
+
+1. **A failed grant never blocks sign-in.** The trigger shares a transaction
+   with the account insert, so an error that propagated would mean nobody can
+   sign in at all. It traps and warns instead, trading "no free credits, top
+   them up later" for nothing worse.
+2. **Running dry is not an error.** Past the cap an account is still created,
+   it simply starts at zero, and the gateway already refuses with
+   `insufficient_credits`.
+
+Onboarding someone with a large existing library will exhaust a trial. Either
+raise `welcome_credits` for the day, or grant them directly:
+
+```sql
+select foundation.grant_credits(
+  '<user id>', 500, 'free', 'grant', 'topup:<something unique>', 'manual top-up');
+```
+
 ## Anonymous users
 
 Apps sign people in anonymously, so there is no sign-up wall in front of a
