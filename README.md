@@ -199,10 +199,29 @@ supabase secrets set PAYMENTS_WEBHOOK_SECRET="$SECRET" --project-ref <ref>
 
 Then configure that same value as the provider's `Authorization` header.
 
-> **Do not give it a `Bearer` prefix.** Supabase's gateway tries to verify any
-> `Bearer`-shaped Authorization header as a JWT and rejects the request before
-> the function runs. A raw `whsec_…` value passes through untouched, which is
-> why this does not need `--no-verify-jwt` and keeps Supabase's own protection.
+**Deploy it with `--no-verify-jwt`:**
+
+```bash
+supabase functions deploy payments-webhook --no-verify-jwt --project-ref <ref>
+```
+
+> ### The gateway and a webhook secret are mutually exclusive
+>
+> This is not a layered defence you can have both halves of, and it is worth
+> writing down because it looks like one. Supabase's gateway demands
+> `Authorization: Bearer <valid JWT>` and rejects anything else — including a
+> raw `whsec_…` value — *before the function runs*. A payment provider sends
+> its own secret and cannot produce a Supabase JWT. So either the gateway
+> guards the endpoint and no provider can reach it, or the function guards
+> itself.
+>
+> Deployed without the flag, a genuine purchase returns
+> `401 UNAUTHORIZED_INVALID_JWT_FORMAT` and credits nothing. Verified both
+> ways, after getting it wrong in both directions first.
+>
+> The secret is the right guard of the two. The alternative is handing the
+> provider the anon key, which would put a public credential in front of the
+> endpoint that mints credits.
 
 The function refuses every request with a 503 when the secret is unset. An
 endpoint that mints credits must never be open because an environment variable
