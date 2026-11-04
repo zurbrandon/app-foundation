@@ -16,7 +16,8 @@ supabase/migrations/   versioned SQL, applied per app project
 supabase/functions/    Edge Functions; _shared/ is runtime-agnostic on purpose
 client/                the TypeScript client, and its tests
 tests/                 runs against a local Postgres, never a deployed one
-docs/                  http-api.md (the contract), ai-gateway.md, deploying.md
+docs/                  http-api.md (the contract), ai-gateway.md,
+                       deploying.md, setting-up-payments.md
 ```
 
 ## The contract is HTTP
@@ -159,7 +160,12 @@ echo "PAYMENTS_WEBHOOK_SECRET=$SECRET" >> .env.local     # gitignored
 supabase secrets set PAYMENTS_WEBHOOK_SECRET="$SECRET" --project-ref <ref>
 ```
 
-Then configure that same value as the provider's `Authorization` header.
+Then configure that same value as the provider's `Authorization` header. A
+`Bearer ` prefix is tolerated, since RevenueCat's docs do not say whether it
+sends the value verbatim.
+
+The full account setup — Apple's agreement, the product, RevenueCat, and
+wiring the app — is in [docs/setting-up-payments.md](docs/setting-up-payments.md).
 
 **Deploy it with `--no-verify-jwt`:**
 
@@ -200,6 +206,12 @@ retry.
 real defence against double-spend and is not worth trading for a corner case,
 and repeated buy-spend-refund is a pattern worth being able to see. Free
 credits are never touched to satisfy a refund — they were never paid for.
+
+**Sandbox purchases are not credited by default.** TestFlight purchases are
+sandbox purchases, so crediting them would let any tester buy the same pack
+repeatedly for free. They are recorded with `environment = 'sandbox'` and
+refused. Set `credit_sandbox_purchases` to true while testing the flow, and
+back to false before anyone else has the build.
 
 **An anonymous account is credited and flagged, not refused.** By the time a
 webhook arrives the money has moved, so refusing means taking payment and

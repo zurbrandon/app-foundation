@@ -42,6 +42,7 @@ const body = (over: Record<string, unknown> = {}) => ({
     type: 'INITIAL_PURCHASE',
     app_user_id: '11111111-1111-1111-1111-111111111111',
     product_id: 'wearwell.credits_500',
+    environment: 'PRODUCTION',
     ...over,
   },
 });
@@ -81,6 +82,17 @@ describe('reading a provider event', () => {
     assert.equal(parseRevenueCat({}), null);
     assert.equal(parseRevenueCat(null), null);
     assert.equal(parseRevenueCat({ event: 'not an object' }), null);
+  });
+
+  it('reads the environment, because TestFlight purchases are sandbox ones', () => {
+    assert.equal(parseRevenueCat(body({ environment: 'PRODUCTION' }))!.sandbox, false);
+    assert.equal(parseRevenueCat(body({ environment: 'SANDBOX' }))!.sandbox, true);
+  });
+
+  it('treats a missing or unrecognised environment as sandbox', () => {
+    // The safe reading of "I cannot tell" is "this may not have been paid for".
+    assert.equal(parseRevenueCat(body({ environment: undefined }))!.sandbox, true);
+    assert.equal(parseRevenueCat(body({ environment: 'STAGING' }))!.sandbox, true);
   });
 
   it('returns nothing without an id, since there would be no way to dedupe', () => {
@@ -129,6 +141,14 @@ describe('the shared secret', () => {
     assert.equal(secretMatches('sk-wrong', 'sk-correct-horse'), false);
     assert.equal(secretMatches('sk-correct', 'sk-correct-horse'), false);
     assert.equal(secretMatches('sk-correct-horse-extra', 'sk-correct-horse'), false);
+  });
+
+  it('accepts the secret with a Bearer prefix too', () => {
+    // RevenueCat's docs do not say whether it sends the configured value
+    // verbatim or wraps it, and a webhook silently rejecting every delivery
+    // over seven characters is a miserable thing to debug.
+    assert.equal(secretMatches('Bearer sk-correct-horse', 'sk-correct-horse'), true);
+    assert.equal(secretMatches('Bearer sk-wrong', 'sk-correct-horse'), false);
   });
 
   it('rejects a missing header', () => {

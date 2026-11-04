@@ -30,11 +30,15 @@ async function makeUser(id, { anonymous = false } = {}) {
             ${anonymous ? null : `p${id.replace(/-/g, '')}@example.com`}, ${anonymous}, now(), now())`;
 }
 
-const purchase = async (eventId, { user = USER, product = SMALL, type = 'INITIAL_PURCHASE' } = {}) =>
-  (await sql`select foundation.record_purchase('test', ${eventId}, ${type}, ${user}, ${product}, null) as v`)[0].v;
+const purchase = async (eventId, { user = USER, product = SMALL, type = 'INITIAL_PURCHASE', sandbox = false } = {}) =>
+  (await sql`select foundation.record_purchase('test', ${eventId}, ${type}, ${user}, ${product}, null, ${sandbox}) as v`)[0].v;
 
-const refund = async (eventId, { user = USER, product = SMALL, type = 'CANCELLATION' } = {}) =>
-  (await sql`select foundation.record_refund('test', ${eventId}, ${type}, ${user}, ${product}, null) as v`)[0].v;
+const refund = async (eventId, { user = USER, product = SMALL, type = 'CANCELLATION', sandbox = false } = {}) =>
+  (await sql`select foundation.record_refund('test', ${eventId}, ${type}, ${user}, ${product}, null, ${sandbox}) as v`)[0].v;
+
+const setting = (key, value) =>
+  sql`insert into foundation.settings (key, value) values (${key}, ${value}::text::jsonb)
+      on conflict (key) do update set value = excluded.value`;
 
 const balanceOf = async (id) => {
   const [row] = await sql`select free, paid from public.credit_balances where user_id = ${id}`;
@@ -43,7 +47,7 @@ const balanceOf = async (id) => {
 
 const eventRow = async (eventId) => {
   const [row] = await sql`
-    select status, credits, shortfall, note from foundation.purchase_events
+    select status, credits, shortfall, note, environment from foundation.purchase_events
      where provider = 'test' and event_id = ${eventId}`;
   return row;
 };
@@ -272,6 +276,42 @@ describe('refunds and chargebacks', () => {
   });
 });
 
+describe('sandbox purchases', () => {
+  it('does not credit one by default', async () => {
+    // TestFlight purchases are sandbox purchases. Crediting them means any
+    // tester can buy the same pack repeatedly, for free, forever.
+    const v = await purchase('evt-20', { sandbox: true });
+    assert.equal(v.status, 'rejected');
+    assert.equal(await balanceOf(USER), null, 'nothing credited');
+    assert.match((await eventRow('evt-20')).note, /sandbox/i);
+  });
+
+  it('records it as sandbox either way, so the trail is honest', async () => {
+    await purchase('evt-21', { sandbox: true });
+    const [row] = await sql`
+      select environment from foundation.purchase_events
+       where provider = 'test' and event_id = 'evt-21'`;
+    assert.equal(row.environment, 'sandbox');
+  });
+
+  it('credits one when the deployment has opted in', async () => {
+    await setting('credit_sandbox_purchases', 'true');
+    try {
+      const v = await purchase('evt-22', { sandbox: true });
+      assert.equal(v.status, 'credited');
+      assert.deepEqual(await balanceOf(USER), { free: 0, paid: 500 });
+    } finally {
+      await setting('credit_sandbox_purchases', 'false');
+    }
+  });
+
+  it('still credits a production purchase while sandbox is off', async () => {
+    const v = await purchase('evt-23', { sandbox: false });
+    assert.equal(v.status, 'credited');
+    assert.equal((await eventRow('evt-23')).environment ?? 'production', 'production');
+  });
+});
+
 describe('what a client is not allowed to do', () => {
   it('keeps the purchase tables away from anon and authenticated', async () => {
     for (const role of ['anon', 'authenticated']) {
@@ -286,8 +326,8 @@ describe('what a client is not allowed to do', () => {
   it('keeps the crediting functions to service_role', async () => {
     for (const role of ['anon', 'authenticated']) {
       for (const fn of [
-        'foundation.record_purchase(text, text, text, uuid, text, jsonb)',
-        'foundation.record_refund(text, text, text, uuid, text, jsonb)',
+        'foundation.record_purchase(text, text, text, uuid, text, jsonb, boolean)',
+        'foundation.record_refund(text, text, text, uuid, text, jsonb, boolean)',
       ]) {
         const [{ ok }] = await sql`select has_function_privilege(${role}, ${fn}, 'EXECUTE') as ok`;
         assert.equal(ok, false, `${role} must not execute ${fn}`);

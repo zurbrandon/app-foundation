@@ -72,6 +72,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       p_user: e.userId,
       p_product_id: e.productId,
       p_payload: raw,
+      p_sandbox: e.sandbox,
     });
     if (error) throw error;
     return data as Verdict;
@@ -89,6 +90,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // purchase it should not have.
     if (verdict.anonymous) {
       console.error(`sold credits to an anonymous account via ${event.id}`);
+    }
+    if (event.sandbox && verdict.status === 'rejected') {
+      console.warn(`sandbox ${event.type} ${event.id} not credited — this is the default`);
     }
     if (verdict.shortfall) {
       console.warn(`refund ${event.id} could not reclaim ${verdict.shortfall} credits`);

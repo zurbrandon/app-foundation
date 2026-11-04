@@ -16,6 +16,14 @@ export type PurchaseEvent = {
   type: string;
   userId: string | null;
   productId: string | null;
+  /**
+   * SANDBOX for a store transaction that cost nobody anything.
+   *
+   * This matters more than it looks: TestFlight purchases are sandbox
+   * purchases. Crediting them unconditionally means any tester can buy the
+   * same pack repeatedly, for free, and receive real credits.
+   */
+  sandbox: boolean;
   /** Credit it, take it back, or neither. */
   effect: 'credit' | 'reverse' | 'ignore';
 };
@@ -64,11 +72,16 @@ export function parseRevenueCat(body: unknown): PurchaseEvent | null {
   const userId = typeof event.app_user_id === 'string' ? event.app_user_id : null;
   const productId = typeof event.product_id === 'string' ? event.product_id : null;
 
+  // Default to treating an unknown environment as sandbox. If the field is
+  // missing or renamed, the safe reading is "this may not have been paid for".
+  const sandbox = String(event.environment ?? 'SANDBOX').toUpperCase() !== 'PRODUCTION';
+
   return {
     id,
     type,
     userId,
     productId,
+    sandbox,
     effect: CREDIT.has(type) ? 'credit' : REVERSE.has(type) ? 'reverse' : 'ignore',
   };
 }
@@ -107,7 +120,12 @@ export async function applyEvent(
 export function secretMatches(provided: string | null, expected: string | undefined): boolean {
   if (!provided || !expected) return false;
 
-  const a = new TextEncoder().encode(provided);
+  // Tolerate a Bearer prefix. RevenueCat's docs do not say whether it sends the
+  // configured value verbatim or wraps it, and a webhook that silently rejects
+  // every delivery because of seven characters is a miserable thing to debug.
+  const value = provided.startsWith('Bearer ') ? provided.slice(7) : provided;
+
+  const a = new TextEncoder().encode(value);
   const b = new TextEncoder().encode(expected);
 
   // Comparing lengths first would itself be a timing signal, so fold the
