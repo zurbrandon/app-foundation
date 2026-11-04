@@ -174,6 +174,57 @@ select foundation.grant_credits(
   '<user id>', 500, 'free', 'grant', 'topup:<something unique>', 'manual top-up');
 ```
 
+## Buying credits
+
+A verified payment arrives at `/functions/v1/payments-webhook`, which turns it
+into ledger entries. Provider-agnostic: familiar on iOS must use Apple IAP for
+digital credits, Understory on macOS outside the Mac App Store would use
+Stripe, and both land in the same two SQL functions. Only `parseRevenueCat` is
+provider-specific.
+
+A client names a **product**, never an amount — the same rule as naming an
+operation rather than a model. `foundation.products` maps product to credits;
+what it *costs* lives in App Store Connect, because the store owns the money,
+the currency and the regional pricing.
+
+**Setup.** The webhook needs a shared secret, which is the only thing between
+it and anyone who finds the URL — there is no user JWT here, the caller is a
+provider:
+
+```bash
+SECRET="whsec_$(openssl rand -hex 32)"
+echo "PAYMENTS_WEBHOOK_SECRET=$SECRET" >> .env.local     # gitignored
+supabase secrets set PAYMENTS_WEBHOOK_SECRET="$SECRET" --project-ref <ref>
+```
+
+Then configure that same value as the provider's `Authorization` header.
+
+> **Do not give it a `Bearer` prefix.** Supabase's gateway tries to verify any
+> `Bearer`-shaped Authorization header as a JWT and rejects the request before
+> the function runs. A raw `whsec_…` value passes through untouched, which is
+> why this does not need `--no-verify-jwt` and keeps Supabase's own protection.
+
+The function refuses every request with a 503 when the secret is unset. An
+endpoint that mints credits must never be open because an environment variable
+was forgotten.
+
+**Everything legitimate answers 200.** A duplicate is not an error, an unknown
+product will not become known by retrying, and an event type we do not handle
+is none of our business — any other reply asks the provider to redeliver
+forever. Only a bad secret (401) and a fault on our side (500) are worth a
+retry.
+
+**Refunds clamp at zero.** Buy 1000, spend 700, refund: 300 comes back and the
+700 is recorded as a shortfall. The non-negative constraint on balances is the
+real defence against double-spend and is not worth trading for a corner case,
+and repeated buy-spend-refund is a pattern worth being able to see. Free
+credits are never touched to satisfy a refund — they were never paid for.
+
+**An anonymous account is credited and flagged, not refused.** By the time a
+webhook arrives the money has moved, so refusing means taking payment and
+giving nothing. The guard belongs in the app: do not offer a purchase to an
+account that cannot survive a reinstall. See below.
+
 ## Anonymous users
 
 Apps sign people in anonymously, so there is no sign-up wall in front of a
