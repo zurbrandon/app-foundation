@@ -18,8 +18,15 @@ currently **not** credited, which is deliberate and explained in Phase 4.
 Nothing else works until this is active, and it is the only step with a waiting
 period.
 
-1. Go to **App Store Connect → Business** (`appstoreconnect.apple.com/business`).
-2. Sign the **Paid Applications** agreement.
+0. **First, accept the current Apple Developer Program License Agreement**, or
+   the Paid Apps row will not appear at all. If App Store Connect shows a
+   banner saying the DPLA has been updated, the Account Holder must accept it
+   at `developer.apple.com/account`. Until then it also blocks app updates and
+   new submissions, so this bites the next build too, not just payments.
+1. Go to **App Store Connect → Business** (`appstoreconnect.apple.com/business`
+   works, though Apple documents no deep link — navigate via **Business** in
+   the top nav if it does not).
+2. On the **Agreements** tab, find **Paid Apps** → **View and Agree to Terms**.
 3. Fill in **Bank Account** and **Tax Forms**. You will need routing and account
    numbers and a tax ID.
 4. Wait for the agreement to show **Active**. Hours to a couple of days.
